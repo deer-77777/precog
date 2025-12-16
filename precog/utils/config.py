@@ -156,6 +156,14 @@ def add_miner_args(parser):
         help="name of the forward function to use",
     )
 
+    # LSTM Model Configuration (for miner)
+    parser.add_argument(
+        "--lstm.model_save_path",
+        type=str,
+        default="./models/lstm/",
+        help="Path where LSTM models are saved (by lstm_trainer.py)",
+    )
+
 
 def add_validator_args(parser):
     """Add validator specific arguments to the parser."""
