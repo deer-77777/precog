@@ -8,9 +8,16 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Union
 
-import bittensor as bt
 import pandas as pd
 import requests
+
+# Use simple logger for standalone operation
+from precog.miners.models.logging_utils import logger as _logger
+
+
+class bt:
+    """Bittensor-like interface using simple logger."""
+    logging = _logger
 
 
 class BinanceData:

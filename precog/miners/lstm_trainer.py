@@ -18,7 +18,6 @@ Options:
 """
 
 import argparse
-import asyncio
 import time
 import schedule
 from datetime import datetime
@@ -27,23 +26,12 @@ from typing import Optional
 import numpy as np
 import torch
 
-try:
-    import bittensor as bt
-except ImportError:
-    class bt:
-        class logging:
-            @staticmethod
-            def info(msg): print(f"[INFO] {msg}")
-            @staticmethod
-            def debug(msg): print(f"[DEBUG] {msg}")
-            @staticmethod
-            def warning(msg): print(f"[WARN] {msg}")
-            @staticmethod
-            def error(msg): print(f"[ERROR] {msg}")
-            @staticmethod
-            def success(msg): print(f"[SUCCESS] {msg}")
-            @staticmethod
-            def trace(msg): print(f"[TRACE] {msg}")
+from precog.miners.models.logging_utils import logger as bt_logging
+
+
+# Use simple logger for standalone training
+class bt:
+    logging = bt_logging
 
 from precog.utils.binance_data import BinanceData
 from precog.miners.models import (
@@ -285,6 +273,10 @@ def run_scheduled_training(trainer: LSTMModelTrainer):
 
 
 def main():
+    print("=" * 70, flush=True)
+    print("LSTM TRAINER - Starting...", flush=True)
+    print("=" * 70, flush=True)
+    
     parser = argparse.ArgumentParser(description="LSTM Model Trainer for Price Prediction")
     
     # Data configuration

@@ -14,21 +14,11 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
-try:
-    import bittensor as bt
-except ImportError:
-    class bt:
-        class logging:
-            @staticmethod
-            def info(msg): print(f"[INFO] {msg}")
-            @staticmethod
-            def debug(msg): print(f"[DEBUG] {msg}")
-            @staticmethod
-            def warning(msg): print(f"[WARN] {msg}")
-            @staticmethod
-            def error(msg): print(f"[ERROR] {msg}")
-            @staticmethod
-            def success(msg): print(f"[SUCCESS] {msg}")
+from precog.miners.models.logging_utils import logger as bt_logging
+
+
+class bt:
+    logging = bt_logging
 
 from precog.miners.models.lstm_model import PricePredictorLSTM, create_model
 from precog.miners.models.data_preprocessor import DataPreprocessor

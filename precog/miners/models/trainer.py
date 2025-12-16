@@ -16,24 +16,12 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 
-try:
-    import bittensor as bt
-except ImportError:
-    # Fallback for standalone training
-    class bt:
-        class logging:
-            @staticmethod
-            def info(msg): print(f"[INFO] {msg}")
-            @staticmethod
-            def debug(msg): print(f"[DEBUG] {msg}")
-            @staticmethod
-            def warning(msg): print(f"[WARN] {msg}")
-            @staticmethod
-            def error(msg): print(f"[ERROR] {msg}")
-            @staticmethod
-            def success(msg): print(f"[SUCCESS] {msg}")
-            @staticmethod
-            def trace(msg): print(f"[TRACE] {msg}")
+from precog.miners.models.logging_utils import logger as bt_logging
+
+
+# Create a bt-like interface using our simple logger
+class bt:
+    logging = bt_logging
 
 
 class EarlyStopping:
