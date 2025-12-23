@@ -45,3 +45,25 @@ validator:
 		--axon.port $(VALIDATOR_PORT) \
 		--netuid $(netuid) \
 		--logging.level $(LOGGING_LEVEL)
+
+# LSTM+XGBoost Hybrid Miner (advanced ML-based prediction)
+miner_lstm_xgb:
+	pm2 start --name $(MINER_NAME) python3 -- precog/miners/miner.py \
+		--neuron.name $(MINER_NAME) \
+		--wallet.name $(COLDKEY) \
+		--wallet.hotkey $(MINER_HOTKEY) \
+		--subtensor.chain_endpoint $($(NETWORK)) \
+		--axon.port $(MINER_PORT) \
+		--netuid $(netuid) \
+		--logging.level $(LOGGING_LEVEL) \
+		--timeout $(TIMEOUT) \
+		--vpermit_tao_limit $(VPERMIT_TAO_LIMIT) \
+		--forward_function $(FORWARD_FUNCTION) \
+
+# Train LSTM+XGBoost models (run before starting miner for pre-trained models)
+train_models:
+	python3 -m precog.miners.models.train --assets btc eth tao --days 14 --epochs 20
+
+# Check model status
+model_status:
+	python3 -c "from precog.miners.models.model_manager import ModelManager; m=ModelManager(); print(m.get_status())"
