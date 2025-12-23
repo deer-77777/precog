@@ -62,11 +62,14 @@ class ModelConfig:
     # Number of features (OHLCV = 5: open, high, low, close, volume)
     num_features: int = 5
     
-    # Output size (predicting close price)
-    output_size: int = 1
+    # Output size (3 for interval prediction: price, min_price, max_price)
+    output_size: int = 3
     
     # Bidirectional LSTM
     bidirectional: bool = False
+    
+    # Whether to predict interval (min/max) in addition to price
+    predict_interval: bool = True
 
 
 @dataclass

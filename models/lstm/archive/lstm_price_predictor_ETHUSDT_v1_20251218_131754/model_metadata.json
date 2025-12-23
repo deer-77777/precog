@@ -1,0 +1,61 @@
+{
+  "asset": "ETHUSDT",
+  "created_at": "2025-12-18T11:28:21.011770",
+  "updated_at": "2025-12-18T11:28:21.011774",
+  "is_incremental": false,
+  "version": 1,
+  "metrics": {
+    "mse": 558.7747192382812,
+    "rmse": 23.638416290283203,
+    "mae": 12.953536987304688,
+    "mape": 0.43040165305137634,
+    "direction_accuracy": 48.574408901251736,
+    "min_mae": 14.671481132507324,
+    "max_mae": 10.868054389953613,
+    "interval_contains_min": 71.36400509908448,
+    "interval_contains_max": 75.45486151350099,
+    "width_mae": 18.758235931396484
+  },
+  "config": {
+    "data": {
+      "historical_days": 60,
+      "data_interval": "1m",
+      "assets": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "TAOUSDT"
+      ]
+    },
+    "model": {
+      "sequence_length": 60,
+      "prediction_horizon": 60,
+      "hidden_size": 128,
+      "num_layers": 2,
+      "dropout": 0.2,
+      "num_features": 5,
+      "output_size": 3,
+      "bidirectional": false
+    },
+    "training": {
+      "epochs": 100,
+      "batch_size": 32,
+      "learning_rate": 0.001,
+      "validation_split": 0.1,
+      "early_stopping_patience": 10,
+      "gradient_clip": 1.0,
+      "weight_decay": 1e-05
+    },
+    "schedule": {
+      "retrain_interval_days": 1,
+      "retrain_hour_utc": 0
+    },
+    "management": {
+      "model_save_path": "./models/lstm/",
+      "keep_old_models": 5,
+      "model_prefix": "lstm_price_predictor"
+    },
+    "device": "cuda",
+    "random_seed": 42,
+    "verbose": true
+  }
+}

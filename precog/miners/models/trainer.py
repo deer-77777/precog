@@ -2,6 +2,7 @@
 Training Pipeline for LSTM Price Prediction Model
 
 Handles both full training and incremental updates.
+Supports 3-output models for interval prediction (price, min, max).
 """
 
 import os
@@ -398,6 +399,8 @@ class Trainer:
         """
         Evaluate model performance.
         
+        Supports both single-output (price only) and 3-output (price, min, max) models.
+        
         Args:
             val_loader: Validation data loader
             preprocessor: Optional preprocessor for inverse transform
@@ -426,6 +429,67 @@ class Trainer:
         if preprocessor is not None:
             predictions = preprocessor.inverse_transform_target(predictions)
             targets = preprocessor.inverse_transform_target(targets)
+        
+        # Check if this is a 3-output model (price, min, max)
+        is_interval_model = predictions.ndim == 2 and predictions.shape[1] == 3
+        
+        if is_interval_model:
+            # Extract components: [price, min, max]
+            pred_price = predictions[:, 0]
+            pred_min = predictions[:, 1]
+            pred_max = predictions[:, 2]
+            
+            target_price = targets[:, 0]
+            target_min = targets[:, 1]
+            target_max = targets[:, 2]
+            
+            # Price metrics
+            price_mse = np.mean((pred_price - target_price) ** 2)
+            price_rmse = np.sqrt(price_mse)
+            price_mae = np.mean(np.abs(pred_price - target_price))
+            price_mape = np.mean(np.abs((target_price - pred_price) / target_price)) * 100
+            
+            # Min/Max metrics
+            min_mae = np.mean(np.abs(pred_min - target_min))
+            max_mae = np.mean(np.abs(pred_max - target_max))
+            
+            # Interval coverage: how often does predicted interval contain actual min/max
+            interval_contains_min = np.mean(pred_min <= target_min)
+            interval_contains_max = np.mean(pred_max >= target_max)
+            
+            # Interval width accuracy (how close is predicted width to actual width)
+            pred_width = pred_max - pred_min
+            actual_width = target_max - target_min
+            width_mae = np.mean(np.abs(pred_width - actual_width))
+            
+            # Direction accuracy (based on price)
+            if len(target_price) > 1:
+                pred_direction = np.sign(pred_price[1:] - pred_price[:-1])
+                actual_direction = np.sign(target_price[1:] - target_price[:-1])
+                direction_accuracy = np.mean(pred_direction == actual_direction) * 100
+            else:
+                direction_accuracy = 0
+            
+            return {
+                "mse": float(price_mse),
+                "rmse": float(price_rmse),
+                "mae": float(price_mae),
+                "mape": float(price_mape),
+                "direction_accuracy": float(direction_accuracy),
+                # Interval-specific metrics
+                "min_mae": float(min_mae),
+                "max_mae": float(max_mae),
+                "interval_contains_min": float(interval_contains_min * 100),
+                "interval_contains_max": float(interval_contains_max * 100),
+                "width_mae": float(width_mae),
+            }
+        else:
+            # Single-output model (original behavior)
+            # Flatten if needed
+            if predictions.ndim == 2:
+                predictions = predictions.flatten()
+            if targets.ndim == 2:
+                targets = targets.flatten()
         
         # Calculate metrics
         mse = np.mean((predictions - targets) ** 2)

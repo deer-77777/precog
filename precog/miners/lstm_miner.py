@@ -6,6 +6,9 @@ It loads trained LSTM models from disk and makes predictions.
 
 The trainer runs separately (lstm_trainer.py) and saves models to disk.
 This miner loads the models and uses them for prediction.
+
+The model outputs 3 values: (predicted_price, predicted_min, predicted_max)
+for direct interval prediction instead of heuristic-based intervals.
 """
 
 import time
@@ -126,6 +129,9 @@ class LSTMPredictor:
         """
         Make price prediction for an asset (1 hour ahead).
         
+        The model outputs 3 values: (price, min_price, max_price)
+        This provides learned interval prediction instead of heuristic-based.
+        
         Args:
             asset: Precog asset name (e.g., "btc", "eth", "tao_bittensor")
         
@@ -165,26 +171,57 @@ class LSTMPredictor:
                 scaled_prediction, _ = model(input_tensor)
             
             # Convert back to original scale
-            prediction = preprocessor.inverse_transform_target(
+            # Shape: (1, 3) for [price, min, max] or (1, 1) for price only
+            raw_prediction = preprocessor.inverse_transform_target(
                 scaled_prediction.cpu().numpy()
-            )[0, 0]
+            )
+            
+            # Check if this is a 3-output model (interval prediction)
+            if raw_prediction.shape[1] == 3:
+                # Model outputs: [price, min_price, max_price]
+                prediction = float(raw_prediction[0, 0])
+                lower_bound = float(raw_prediction[0, 1])
+                upper_bound = float(raw_prediction[0, 2])
+                
+                # Ensure bounds are valid (min <= price <= max)
+                lower_bound = min(lower_bound, prediction)
+                upper_bound = max(upper_bound, prediction)
+                
+                # Ensure lower < upper
+                if lower_bound >= upper_bound:
+                    # Fallback: add small margin
+                    margin = prediction * 0.02
+                    lower_bound = prediction - margin
+                    upper_bound = prediction + margin
+                
+                bt.logging.debug(
+                    f"{symbol}: Learned interval - price={prediction:.2f}, "
+                    f"min={lower_bound:.2f}, max={upper_bound:.2f}"
+                )
+            else:
+                # Single-output model: use volatility-based heuristic (fallback)
+                prediction = float(raw_prediction[0, 0])
             
             # Calculate prediction interval based on volatility
             recent_prices = df["close"].tail(self.config.model.sequence_length)
             volatility = recent_prices.pct_change().std()
             
-            # 95% confidence interval (approximately 2 standard deviations)
-            # Multiply by sqrt of prediction horizon for longer-term prediction
+            # 95% confidence interval
             horizon_factor = np.sqrt(self.config.model.prediction_horizon)
             margin = prediction * volatility * 2 * horizon_factor
             
             # Ensure reasonable bounds
-            min_margin = prediction * 0.01  # At least 1%
-            max_margin = prediction * 0.10  # At most 10%
+            min_margin = prediction * 0.01
+            max_margin = prediction * 0.10
             margin = max(min_margin, min(margin, max_margin))
             
             lower_bound = prediction - margin
             upper_bound = prediction + margin
+                
+            bt.logging.debug(
+                f"{symbol}: Heuristic interval (fallback) - price={prediction:.2f}, "
+                f"margin={margin:.2f}"
+            )
             
             return float(prediction), (float(lower_bound), float(upper_bound))
             

@@ -2,6 +2,7 @@
 LSTM Model for Price Prediction
 
 A PyTorch LSTM model for cryptocurrency price prediction.
+Supports both single-output (price only) and 3-output (price, min, max) modes.
 """
 
 import torch
@@ -28,7 +29,7 @@ class PricePredictorLSTM(nn.Module):
         input_size: int = 5,  # OHLCV features
         hidden_size: int = 128,
         num_layers: int = 2,
-        output_size: int = 1,
+        output_size: int = 3,  # 3 outputs: price, min, max for interval prediction
         dropout: float = 0.2,
         bidirectional: bool = False,
     ):
@@ -39,7 +40,7 @@ class PricePredictorLSTM(nn.Module):
             input_size: Number of input features (default 5 for OHLCV)
             hidden_size: Size of LSTM hidden state
             num_layers: Number of stacked LSTM layers
-            output_size: Number of output features (default 1 for price)
+            output_size: Number of output features (3 for price, min, max)
             dropout: Dropout rate between LSTM layers
             bidirectional: Whether to use bidirectional LSTM
         """
@@ -107,6 +108,7 @@ class PricePredictorLSTM(nn.Module):
         
         Returns:
             output: Predicted values of shape (batch_size, output_size)
+                    For output_size=3: [price, min_price, max_price]
             hidden: Tuple of (h_n, c_n) hidden states
         """
         batch_size = x.size(0)
@@ -193,7 +195,7 @@ class PricePredictorLSTMWithAttention(nn.Module):
         input_size: int = 5,
         hidden_size: int = 128,
         num_layers: int = 2,
-        output_size: int = 1,
+        output_size: int = 3,  # 3 outputs: price, min, max for interval prediction
         dropout: float = 0.2,
         bidirectional: bool = False,
     ):
@@ -335,7 +337,7 @@ def create_model(config: dict, use_attention: bool = False) -> nn.Module:
         input_size=config.get("num_features", 5),
         hidden_size=config.get("hidden_size", 128),
         num_layers=config.get("num_layers", 2),
-        output_size=config.get("output_size", 1),
+        output_size=config.get("output_size", 3),  # Default to 3 for interval prediction
         dropout=config.get("dropout", 0.2),
         bidirectional=config.get("bidirectional", False),
     )

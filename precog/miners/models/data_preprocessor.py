@@ -2,6 +2,7 @@
 Data Preprocessor for LSTM Training
 
 Handles data normalization, sequence creation, and train/validation splitting.
+Supports 3-output prediction: (price, min_price, max_price) for interval prediction.
 """
 
 import numpy as np
@@ -20,7 +21,7 @@ class PriceDataset(Dataset):
     
     Creates sequences of (X, y) pairs where:
         X: sequence of features (OHLCV) of length sequence_length
-        y: target price (close price at next time step)
+        y: target values - either (price,) or (price, min, max)
     """
     
     def __init__(
@@ -33,7 +34,7 @@ class PriceDataset(Dataset):
         
         Args:
             sequences: Input sequences of shape (num_samples, sequence_length, num_features)
-            targets: Target values of shape (num_samples, 1)
+            targets: Target values of shape (num_samples, 1) or (num_samples, 3)
         """
         self.sequences = torch.FloatTensor(sequences)
         self.targets = torch.FloatTensor(targets)
@@ -50,6 +51,10 @@ class DataPreprocessor:
     Preprocessor for converting raw price data into LSTM-ready sequences.
     
     Features used: Open, High, Low, Close, Volume (OHLCV)
+    
+    Supports two modes:
+    - predict_interval=False: predicts only close price (1 output)
+    - predict_interval=True: predicts close price, min price, max price (3 outputs)
     """
     
     FEATURE_COLUMNS = ["open", "high", "low", "close", "volume"]
@@ -61,6 +66,7 @@ class DataPreprocessor:
         prediction_horizon: int = 1,
         feature_columns: Optional[List[str]] = None,
         target_column: Optional[str] = None,
+        predict_interval: bool = True,
     ):
         """
         Initialize preprocessor.
@@ -69,15 +75,18 @@ class DataPreprocessor:
             sequence_length: Length of input sequences (lookback window)
             prediction_horizon: How many steps ahead to predict
             feature_columns: Columns to use as features
-            target_column: Column to predict
+            target_column: Column to predict (close price)
+            predict_interval: If True, also predict min/max for interval
         """
         self.sequence_length = sequence_length
         self.prediction_horizon = prediction_horizon
         self.feature_columns = feature_columns or self.FEATURE_COLUMNS
         self.target_column = target_column or self.TARGET_COLUMN
+        self.predict_interval = predict_interval
         
-        # Scalers for each feature
+        # Scalers for features and targets
         self.feature_scaler = MinMaxScaler(feature_range=(0, 1))
+        # Use a single scaler for all price targets (close, min, max are all prices)
         self.target_scaler = MinMaxScaler(feature_range=(0, 1))
         
         # Fitted flag
@@ -94,10 +103,13 @@ class DataPreprocessor:
             self
         """
         features = df[self.feature_columns].values
-        targets = df[[self.target_column]].values
+        
+        # For target scaler, fit on all price data (close, high, low)
+        # This ensures consistent scaling for price, min, and max
+        all_prices = df[["close", "high", "low"]].values.flatten().reshape(-1, 1)
         
         self.feature_scaler.fit(features)
-        self.target_scaler.fit(targets)
+        self.target_scaler.fit(all_prices)
         
         self._is_fitted = True
         return self
@@ -114,20 +126,28 @@ class DataPreprocessor:
         
         Returns:
             Tuple of (sequences, targets)
+            - If predict_interval=False: targets shape is (num_samples, 1)
+            - If predict_interval=True: targets shape is (num_samples, 3) for [price, min, max]
         """
         if not self._is_fitted:
             raise ValueError("Preprocessor not fitted. Call fit() first.")
         
         # Scale features
         features = df[self.feature_columns].values
-        targets = df[[self.target_column]].values
-        
         scaled_features = self.feature_scaler.transform(features)
-        scaled_targets = self.target_scaler.transform(targets)
+        
+        # Scale price columns for targets
+        close_prices = df["close"].values.reshape(-1, 1)
+        low_prices = df["low"].values.reshape(-1, 1)
+        high_prices = df["high"].values.reshape(-1, 1)
+        
+        scaled_close = self.target_scaler.transform(close_prices).flatten()
+        scaled_low = self.target_scaler.transform(low_prices).flatten()
+        scaled_high = self.target_scaler.transform(high_prices).flatten()
         
         # Create sequences
         sequences, sequence_targets = self._create_sequences(
-            scaled_features, scaled_targets
+            scaled_features, scaled_close, scaled_low, scaled_high, df
         )
         
         return sequences, sequence_targets
@@ -151,14 +171,20 @@ class DataPreprocessor:
     def _create_sequences(
         self,
         features: np.ndarray,
-        targets: np.ndarray,
+        scaled_close: np.ndarray,
+        scaled_low: np.ndarray,
+        scaled_high: np.ndarray,
+        df: pd.DataFrame,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Create sequences from scaled data.
         
         Args:
             features: Scaled feature array
-            targets: Scaled target array
+            scaled_close: Scaled close prices
+            scaled_low: Scaled low prices
+            scaled_high: Scaled high prices
+            df: Original dataframe (for getting raw min/max in horizon window)
         
         Returns:
             Tuple of (sequences, targets)
@@ -171,9 +197,31 @@ class DataPreprocessor:
             seq = features[i:i + self.sequence_length]
             sequences.append(seq)
             
-            # Target (price at prediction_horizon steps after sequence ends)
-            target_idx = i + self.sequence_length + self.prediction_horizon - 1
-            target = targets[target_idx]
+            # Target window: from end of input sequence to prediction_horizon steps ahead
+            horizon_start = i + self.sequence_length
+            horizon_end = i + self.sequence_length + self.prediction_horizon
+            
+            if self.predict_interval:
+                # Get the close price at the END of the horizon
+                target_price = scaled_close[horizon_end - 1]
+                
+                # Get MIN (lowest low) during the entire horizon window
+                horizon_lows = df["low"].iloc[horizon_start:horizon_end].values
+                min_price_raw = horizon_lows.min()
+                target_min = self.target_scaler.transform([[min_price_raw]])[0, 0]
+                
+                # Get MAX (highest high) during the entire horizon window
+                horizon_highs = df["high"].iloc[horizon_start:horizon_end].values
+                max_price_raw = horizon_highs.max()
+                target_max = self.target_scaler.transform([[max_price_raw]])[0, 0]
+                
+                # Target: [price, min, max]
+                target = np.array([target_price, target_min, target_max])
+            else:
+                # Original behavior: just the close price
+                target_price = scaled_close[horizon_end - 1]
+                target = np.array([target_price])
+            
             sequence_targets.append(target)
         
         return np.array(sequences), np.array(sequence_targets)
@@ -183,7 +231,7 @@ class DataPreprocessor:
         Convert scaled target back to original scale.
         
         Args:
-            scaled_target: Scaled target values
+            scaled_target: Scaled target values of shape (n, 1) or (n, 3)
         
         Returns:
             Original scale target values
@@ -191,9 +239,18 @@ class DataPreprocessor:
         if not self._is_fitted:
             raise ValueError("Preprocessor not fitted.")
         
-        # Ensure 2D shape
+        original_shape = scaled_target.shape
+        
+        # Flatten to 2D for inverse transform
         if scaled_target.ndim == 1:
             scaled_target = scaled_target.reshape(-1, 1)
+        elif scaled_target.ndim == 2 and scaled_target.shape[1] > 1:
+            # For 3-output case, transform each column separately
+            result = np.zeros_like(scaled_target)
+            for i in range(scaled_target.shape[1]):
+                col = scaled_target[:, i:i+1]
+                result[:, i:i+1] = self.target_scaler.inverse_transform(col)
+            return result
         
         return self.target_scaler.inverse_transform(scaled_target)
     
@@ -231,6 +288,7 @@ class DataPreprocessor:
             "prediction_horizon": self.prediction_horizon,
             "feature_columns": self.feature_columns,
             "target_column": self.target_column,
+            "predict_interval": self.predict_interval,
             "feature_scaler": self.feature_scaler,
             "target_scaler": self.target_scaler,
             "is_fitted": self._is_fitted,
@@ -251,6 +309,7 @@ class DataPreprocessor:
             prediction_horizon=state["prediction_horizon"],
             feature_columns=state["feature_columns"],
             target_column=state["target_column"],
+            predict_interval=state.get("predict_interval", False),  # Backward compatible
         )
         preprocessor.feature_scaler = state["feature_scaler"]
         preprocessor.target_scaler = state["target_scaler"]

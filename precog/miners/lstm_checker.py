@@ -26,23 +26,11 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-try:
-    import bittensor as bt
-except ImportError:
-    class bt:
-        class logging:
-            @staticmethod
-            def info(msg): print(f"[INFO] {msg}")
-            @staticmethod
-            def debug(msg): print(f"[DEBUG] {msg}")
-            @staticmethod
-            def warning(msg): print(f"[WARN] {msg}")
-            @staticmethod
-            def error(msg): print(f"[ERROR] {msg}")
-            @staticmethod
-            def success(msg): print(f"[SUCCESS] {msg}")
-            @staticmethod
-            def trace(msg): print(f"[TRACE] {msg}")
+from precog.miners.models.logging_utils import logger as bt_logging
+
+
+class bt:
+    logging = bt_logging
 
 from precog.utils.binance_data import BinanceData, binance_to_precog_asset
 from precog.miners.lstm_miner import LSTMPredictor
@@ -199,6 +187,16 @@ class LSTMChecker:
         point_error = self.calculate_point_error(prediction, actual_price_at_eval)
         interval_score = self.calculate_interval_score(interval, hour_prices)
         
+        # Log detailed comparison
+        bt.logging.info(f"─" * 60)
+        bt.logging.info(f"📊 {symbol} | Prediction Time: {prediction_time.strftime('%Y-%m-%d %H:%M')}")
+        bt.logging.info(f"   Predicted Price:  ${prediction:.2f}")
+        bt.logging.info(f"   Actual Price:     ${actual_price_at_eval:.2f}")
+        bt.logging.info(f"   Predicted Range:  [${interval[0]:.2f} ~ ${interval[1]:.2f}]")
+        bt.logging.info(f"   Actual Range:     [${min(hour_prices):.2f} ~ ${max(hour_prices):.2f}]")
+        bt.logging.info(f"   Point Error:      {point_error * 100:.4f}%")
+        bt.logging.info(f"   Interval Score:   {interval_score:.4f}")
+        
         return {
             "symbol": symbol,
             "prediction_time": prediction_time.isoformat(),
@@ -236,6 +234,22 @@ class LSTMChecker:
         
         # Get current price for reference
         current_price = self.binance.get_latest_price(symbol)
+        price_change = (prediction - current_price) / current_price * 100 if current_price else None
+        
+        # Log detailed prediction
+        bt.logging.info(f"─" * 60)
+        bt.logging.info(f"🔮 {symbol} | CURRENT PREDICTION")
+        bt.logging.info(f"─" * 60)
+        bt.logging.info(f"   Current Time:     {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
+        bt.logging.info(f"   Prediction For:   {(datetime.utcnow() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')} UTC")
+        bt.logging.info(f"─" * 60)
+        bt.logging.info(f"   Current Price:    ${current_price:.2f}")
+        bt.logging.info(f"   Predicted Price:  ${prediction:.2f}")
+        bt.logging.info(f"   Predicted Range:  [${interval[0]:.2f} ~ ${interval[1]:.2f}]")
+        if price_change:
+            direction = "📈 UP" if price_change > 0 else "📉 DOWN"
+            bt.logging.info(f"   Expected Change:  {direction} {abs(price_change):.2f}%")
+        bt.logging.info(f"─" * 60)
         
         return {
             "symbol": symbol,
@@ -244,7 +258,7 @@ class LSTMChecker:
             "current_price": current_price,
             "predicted_price": prediction,
             "predicted_interval": interval,
-            "price_change_expected": (prediction - current_price) / current_price * 100 if current_price else None,
+            "price_change_expected": price_change,
         }
     
     def backtest(
@@ -264,7 +278,9 @@ class LSTMChecker:
         Returns:
             Dictionary with backtest results and summary statistics
         """
-        bt.logging.info(f"Running backtest for {symbol} over {hours} hours...")
+        bt.logging.info(f"═" * 60)
+        bt.logging.info(f"📈 BACKTEST: {symbol} | Last {hours} hours")
+        bt.logging.info(f"═" * 60)
         
         results = []
         current_time = datetime.utcnow()
@@ -275,18 +291,14 @@ class LSTMChecker:
         for i in range(hours):
             prediction_time = start_time + timedelta(hours=i)
             
-            bt.logging.trace(f"Checking prediction at {prediction_time}...")
+            bt.logging.info(f"\n[{i+1}/{hours}] Testing prediction at {prediction_time.strftime('%Y-%m-%d %H:%M')}")
             
             result = self.check_single_prediction(symbol, prediction_time)
             
             if "error" not in result:
                 results.append(result)
-                bt.logging.debug(
-                    f"Hour {i+1}: Pred=${result['prediction']:.2f}, "
-                    f"Actual=${result['actual_price']:.2f}, "
-                    f"Error={result['point_error_percent']:.2f}%, "
-                    f"Interval={result['interval_score']:.4f}"
-                )
+            else:
+                bt.logging.warning(f"   ⚠ Skipped: {result.get('error', 'Unknown error')}")
         
         if not results:
             return {

@@ -117,9 +117,11 @@ class LSTMModelTrainer:
             bt.logging.info(f"Fetched {len(df)} records ({df['open_time'].min()} to {df['open_time'].max()})")
             
             # Step 2: Create preprocessor with 1-hour prediction horizon
+            # predict_interval=True creates 3 targets: (price, min, max)
             preprocessor = DataPreprocessor(
                 sequence_length=self.config.model.sequence_length,
                 prediction_horizon=self.config.model.prediction_horizon,  # 60 = 1 hour
+                predict_interval=self.config.model.predict_interval,
             )
             
             # Step 3: Create data loaders
@@ -172,6 +174,13 @@ class LSTMModelTrainer:
             metrics = trainer.evaluate(val_loader, preprocessor)
             bt.logging.info(f"Final metrics - RMSE: {metrics['rmse']:.4f}, MAE: {metrics['mae']:.4f}, "
                           f"MAPE: {metrics['mape']:.2f}%, Direction Accuracy: {metrics['direction_accuracy']:.2f}%")
+            
+            # Log interval-specific metrics if available
+            if 'min_mae' in metrics:
+                bt.logging.info(f"Interval metrics - Min MAE: {metrics['min_mae']:.4f}, Max MAE: {metrics['max_mae']:.4f}, "
+                              f"Width MAE: {metrics['width_mae']:.4f}")
+                bt.logging.info(f"Interval coverage - Contains Min: {metrics['interval_contains_min']:.1f}%, "
+                              f"Contains Max: {metrics['interval_contains_max']:.1f}%")
             
             # Step 8: Save model
             self.model_manager.save_model(

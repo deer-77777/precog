@@ -1,0 +1,56 @@
+{
+  "asset": "ETHUSDT",
+  "created_at": "2025-12-16T14:20:39.685203",
+  "updated_at": "2025-12-16T14:20:39.685208",
+  "is_incremental": false,
+  "version": 1,
+  "metrics": {
+    "mse": 484.48822021484375,
+    "rmse": 22.011093139648438,
+    "mae": 13.747636795043945,
+    "mape": 0.43642836809158325,
+    "direction_accuracy": 48.85257301808067
+  },
+  "config": {
+    "data": {
+      "historical_days": 60,
+      "data_interval": "1m",
+      "assets": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "TAOUSDT"
+      ]
+    },
+    "model": {
+      "sequence_length": 60,
+      "prediction_horizon": 60,
+      "hidden_size": 128,
+      "num_layers": 2,
+      "dropout": 0.2,
+      "num_features": 5,
+      "output_size": 1,
+      "bidirectional": false
+    },
+    "training": {
+      "epochs": 100,
+      "batch_size": 32,
+      "learning_rate": 0.001,
+      "validation_split": 0.1,
+      "early_stopping_patience": 10,
+      "gradient_clip": 1.0,
+      "weight_decay": 1e-05
+    },
+    "schedule": {
+      "retrain_interval_days": 1,
+      "retrain_hour_utc": 0
+    },
+    "management": {
+      "model_save_path": "./models/lstm/",
+      "keep_old_models": 5,
+      "model_prefix": "lstm_price_predictor"
+    },
+    "device": "cuda",
+    "random_seed": 42,
+    "verbose": true
+  }
+}
